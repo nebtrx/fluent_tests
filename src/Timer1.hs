@@ -1,11 +1,14 @@
+module Timer1
+    where
+
 import           Control.Concurrent
 import           Control.Concurrent.STM
 
 interval :: Int
 interval = 1000000
 
-main :: IO()
-main = do
+testTimer1 :: IO()
+testTimer1 = do
     timer1 <- newTimer (4 * interval)
     waitTimer timer1
     putStrLn "Timer 1 expired"

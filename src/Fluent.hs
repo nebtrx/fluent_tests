@@ -1,3 +1,7 @@
+module FluentTest
+    (
+    ) where
+
 data Fluent a = Fluent a
 
 instance Show a => Show (Fluent a) where

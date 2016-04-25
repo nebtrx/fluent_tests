@@ -1,39 +1,51 @@
 module Tasks
     ( newTask
-    , func
+    , run
     , unwrap
     , uRun
     , (>*>)
     , Task
     ) where
 
-import           Control.Concurrent.Async (Async, async, wait)
+import           Control.Concurrent.Async (Async, async, wait, waitCatch)
 import           Control.Exception.Base
 import           Control.Monad
 import           System.IO.Unsafe
 
-data TaskExecutionSummary a = TaskExecutionSummary  { result      :: a
-                                                    , isCompleted :: Bool
-                                                    , error       :: IOError
-                                                    }
+-- data TaskExecutionSummary a = TaskExecutionSummary  { result      :: Either SomeException a
+--                                                     , isCompleted :: Bool
+--                                                     }
 
-newtype Task a = Task { func :: IO (IO a) }
+data Task a = Task  { unwrap  :: IO a
+                    , execute :: IO ( IO (Either SomeException a))
+                    }
 
-tryWait :: Exception e => Async a -> IO (Either e a)
-tryWait = try . wait
+executeTaskInternalIO :: IO a -> IO (  IO (Either SomeException a ))
+executeTaskInternalIO io = do aw <- async io
+                              return (waitCatch aw)
 
 newTask :: IO a -> Task a
-newTask io = Task $ do aw <- async io
-                       return (wait aw)
+newTask io = Task { unwrap = io, execute = executeTaskInternalIO io }
 
 bind :: Task a -> (a -> Task b) -> Task b
-bind m f = newTask $ do a <- unwrap m
-                        join $ func $ f a
+bind aTask tobTask = Task { unwrap = io, execute = executeTaskInternalIO io }
+  where
+    io = buildIO aTask tobTask
+      where
+        buildIO :: Task a -> (a -> Task b) -> IO b
+        buildIO aTask' tobTask' = do  a <- unwrap aTask'
+                                      unwrap $ tobTask' a
 
 apply :: Task ( a -> b ) -> Task a -> Task b
-apply fa a = newTask $ do f <- unwrap fa
-                          a <- unwrap a
-                          join $ func $ pure $ f a
+apply funcTask aTask = Task { unwrap = io, execute = executeTaskInternalIO io }
+  where
+    io = buildIO funcTask aTask
+      where
+        buildIO :: Task ( a -> b ) -> Task a-> IO b
+        buildIO funcTask' aTask' = do func <- unwrap funcTask'
+                                      a <- unwrap aTask'
+                                      pure $ func a
+
 
 continueWith :: Task a -> (a -> b) -> Task b
 continueWith = flip fmap
@@ -41,15 +53,20 @@ continueWith = flip fmap
 (>*>) :: Task a -> (a -> b) -> Task b
 (>*>) = continueWith
 
-unwrap :: Task a -> IO a
-unwrap m = join $ func m
+run :: Task a -> IO a
+run t = gatherTaskResult . join $ execute t
+  where
+    gatherTaskResult ::  IO (Either SomeException a) -> IO a
+    gatherTaskResult taskResult = taskResult >>= \ r -> case r of
+                                                          Left er -> throw er
+                                                          Right a -> return a
 
 uRun :: Task a -> a
 uRun = unsafePerformIO . unwrap
 
 instance Monad Task where
-  return a = Task $ return (return a)
-  (>>=)    = bind
+  return  = newTask . return
+  (>>=)   = bind
 
 instance Applicative Task where
   pure    = return

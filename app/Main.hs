@@ -7,14 +7,14 @@ import           Tasks
 import           Timer2
 
 
-test1 :: Task Int
-test1 = newTask $ do
+task1 :: Task Int
+task1 = newTask $ do
     threadDelay 1000000  -- Wait 1 second
     putStrLn "Hello,"
     return 1
 
-test2 :: Task Int
-test2 = newTask $ do
+task2 :: Task Int
+task2 = newTask $ do
     threadDelay 3000000
     putStrLn " world!"
     return 2
@@ -31,11 +31,11 @@ main1 = do
 
 main2 :: IO ()
 main2 = do
-          n   <- unwrap  test2 -- block until 'test3' is done
+          n   <- run  task2 -- block until 'test3' is done
           print n
 
 main3 :: IO ()
-main3 = do  a <- unwrap $ test1 >*> \r -> r + uRun test2
+main3 = do  a <- run $ task1 >*> \r -> r + uRun task2
             print a
 
 main :: IO ()

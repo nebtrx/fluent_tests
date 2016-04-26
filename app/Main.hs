@@ -9,14 +9,18 @@ import           Timer2
 
 task1 :: Task Int
 task1 = newTask $ do
+    threadDelay 2000000  -- Wait 1 second
+    putStrLn "Hello 1"
     threadDelay 1000000  -- Wait 1 second
-    putStrLn "Hello,"
+    putStrLn "World 1"
     return 1
 
 task2 :: Task Int
 task2 = newTask $ do
-    threadDelay 3000000
-    putStrLn " world!"
+    threadDelay 2000000
+    putStrLn " Hello 2"
+    threadDelay 2000000  -- Wait 1 second
+    putStrLn "World 2"
     return 2
 
 main1 :: IO ()
@@ -36,7 +40,8 @@ main2 = do
 
 main3 :: IO ()
 main3 = do  v <- run task2
-            a <- run $ task1 >*-> \r -> r + v
+            a <- run $ task1 >*-> \r -> r + 5
+            print v
             print a
 
 

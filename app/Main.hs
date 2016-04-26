@@ -31,11 +31,18 @@ main1 = do
 
 main2 :: IO ()
 main2 = do
-          n   <- run  task2 -- block until 'test3' is done
+          n  <- run  task2 -- block until 'test3' is done
           print n
 
 main3 :: IO ()
-main3 = do  a <- run $ task1 >*> \r -> r + uRun task2
+main3 = do  v <- run task2
+            a <- run $ task1 >*-> \r -> r + v
+            print a
+
+
+main4 :: IO ()
+main4 = do  v <- run task2
+            a <- run $ task1 >*> \r -> eitherResultIs r ( +v) undefined
             print a
 
 main :: IO ()

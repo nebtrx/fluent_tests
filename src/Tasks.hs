@@ -4,6 +4,8 @@ module Tasks
     , unwrap
     , uRun
     , (>*>)
+    , (>*->)
+    , eitherResultIs
     , Task
     ) where
 
@@ -20,7 +22,7 @@ data Task a = Task  { unwrap  :: IO a
                     , execute :: IO ( IO (Either SomeException a))
                     }
 
-executeTaskInternalIO :: IO a -> IO (  IO (Either SomeException a ))
+executeTaskInternalIO :: IO a -> IO ( IO (Either SomeException a ))
 executeTaskInternalIO io = do aw <- async io
                               return (waitCatch aw)
 
@@ -28,35 +30,39 @@ newTask :: IO a -> Task a
 newTask io = Task { unwrap = io, execute = executeTaskInternalIO io }
 
 bind :: Task a -> (a -> Task b) -> Task b
-bind aTask tobTask = Task { unwrap = io, execute = executeTaskInternalIO io }
-  where
-    io = buildIO aTask tobTask
-      where
-        buildIO :: Task a -> (a -> Task b) -> IO b
-        buildIO aTask' tobTask' = do  a <- unwrap aTask'
-                                      unwrap $ tobTask' a
+bind aTask tobTask = newTask $ do a <- unwrap aTask
+                                  unwrap $ tobTask a
 
 apply :: Task ( a -> b ) -> Task a -> Task b
-apply funcTask aTask = Task { unwrap = io, execute = executeTaskInternalIO io }
-  where
-    io = buildIO funcTask aTask
-      where
-        buildIO :: Task ( a -> b ) -> Task a-> IO b
-        buildIO funcTask' aTask' = do func <- unwrap funcTask'
-                                      a <- unwrap aTask'
-                                      pure $ func a
+apply funcTask aTask = newTask $ do func <- unwrap funcTask
+                                    a <- unwrap aTask
+                                    pure $ func a
 
+continueWith :: Task a -> (Either SomeException a -> b) -> Task b
+continueWith aTask continuation = newTask $ do  result <- unwrapResult $ execute aTask
+                                                return $ continuation result
 
-continueWith :: Task a -> (a -> b) -> Task b
-continueWith = flip fmap
+ifSuccessContinueWith :: Task a -> (a -> b) -> Task b
+ifSuccessContinueWith = flip fmap
 
-(>*>) :: Task a -> (a -> b) -> Task b
+eitherResultIs :: Either SomeException a -> (a -> b) -> (SomeException -> b) -> b
+eitherResultIs taskResult success fail = case taskResult of
+                                            Left  er -> fail er
+                                            Right a  -> success a
+
+(>*>) :: Task a -> (Either SomeException a -> b) -> Task b
 (>*>) = continueWith
+
+(>*->) :: Task a -> (a -> b) -> Task b
+(>*->) = ifSuccessContinueWith
+
+unwrapResult :: IO ( IO (Either SomeException a)) -> IO (Either SomeException a)
+unwrapResult = join
 
 run :: Task a -> IO a
 run t = gatherTaskResult . join $ execute t
   where
-    gatherTaskResult ::  IO (Either SomeException a) -> IO a
+    gatherTaskResult :: IO (Either SomeException a) -> IO a
     gatherTaskResult taskResult = taskResult >>= \ r -> case r of
                                                           Left er -> throw er
                                                           Right a -> return a
